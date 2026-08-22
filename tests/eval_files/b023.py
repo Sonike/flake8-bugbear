@@ -170,3 +170,106 @@ def iter_f(names):
 
         if False:
             return [lambda: i for i in range(3)]  # error  # B023: 28, "i"
+
+# OK because the function is only ever *called* inside the loop body, so it can
+# never outlive the iteration in which its free variables were assigned.
+# https://github.com/PyCQA/flake8-bugbear/issues/468
+for _ in range(10):
+    foo = []
+
+    def immediately_called():
+        foo.append(42)
+
+    immediately_called()
+
+
+# still an error: the function escapes the iteration even though it is also called
+for _ in range(10):
+    bar = []
+
+    def called_and_escapes():
+        bar.append(42)  # B023: 8, "bar"
+
+    called_and_escapes()
+    functions.append(called_and_escapes)
+
+
+# still an error: a decorator can stash the original function somewhere
+for _ in range(10):
+    baz = []
+
+    @some_decorator
+    def decorated():
+        baz.append(42)  # B023: 8, "baz"
+
+    decorated()
+
+
+# still an error: the call happens whenever the *outer* function runs, which may
+# be long after the loop finished
+for _ in range(10):
+    qux = []
+
+    def target():
+        qux.append(42)  # B023: 8, "qux"
+
+    # (`target` itself is not reported: `_get_assigned_names` does not treat a
+    # `def` as an assignment -- pre-existing behaviour, unrelated to this fix)
+    def wrapper():
+        target()
+
+    functions.append(wrapper)
+
+
+# still an error: the function is also called after the loop, so the binding it
+# closes over is whatever the last iteration left behind
+for _ in range(10):
+    quux = []
+
+    def called_after_the_loop():
+        quux.append(42)  # B023: 8, "quux"
+
+    called_after_the_loop()
+
+called_after_the_loop()
+
+# still an error: calling an `async def` only builds a coroutine, so the body --
+# and with it the read of the loop variable -- runs whenever it is awaited
+for _ in range(10):
+    corge = []
+
+    async def awaited_later():
+        corge.append(42)  # B023: 8, "corge"
+
+    awaited_later()
+
+
+# still an error: calling a generator function only builds a generator
+for _ in range(10):
+    grault = []
+
+    def iterated_later():
+        yield grault  # B023: 14, "grault"
+
+    iterated_later()
+
+
+# still an error: a call above the `def` invokes the binding the previous
+# iteration left behind
+for _ in range(10):
+    waldo = []
+
+    called_above_the_def()
+
+    def called_above_the_def():
+        waldo.append(42)  # B023: 8, "waldo"
+
+
+# still an error: the `else` suite runs once the loop is over
+for _ in range(10):
+    garply = []
+
+    def called_in_the_else_suite():
+        garply.append(42)  # B023: 8, "garply"
+else:
+    called_in_the_else_suite()
