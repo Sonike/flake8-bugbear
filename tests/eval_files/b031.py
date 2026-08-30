@@ -69,3 +69,41 @@ for (_key1, _key2), (_value1, _value2) in groupby(
 for _section, section_items in groupby(items, key=lambda p: p[1]):
     section_items: list
     collect_shop_items("Jane", section_items)
+
+
+# Mutually exclusive branches cannot consume the group more than once (#465)
+for _section, section_items in groupby(items, key=lambda p: p[1]):
+    if _section == "greens":
+        collect_shop_items("Jane", section_items)
+    else:
+        collect_shop_items("Joe", section_items)
+
+# Each arm of an if/elif/else chain is also mutually exclusive
+for _section, section_items in groupby(items, key=lambda p: p[1]):
+    if _section == "greens":
+        collect_shop_items("Jane", section_items)
+    elif _section == "meats & fish":
+        collect_shop_items("Joe", section_items)
+    else:
+        collect_shop_items("Sarah", section_items)
+
+# Repeated uses on the same path must still warn
+for _section, section_items in groupby(items, key=lambda p: p[1]):
+    if _section == "greens":
+        collect_shop_items("Jane", section_items)
+        collect_shop_items("Joe", section_items)  # B031: 34, "section_items"
+    else:
+        collect_shop_items("Sarah", section_items)
+
+# A use after a conditional can follow a use inside either branch
+for _section, section_items in groupby(items, key=lambda p: p[1]):
+    if _section == "greens":
+        collect_shop_items("Jane", section_items)
+    collect_shop_items("Joe", section_items)  # B031: 30, "section_items"
+
+# A use in the condition happens before either branch
+for _section, section_items in groupby(items, key=lambda p: p[1]):
+    if list(section_items):
+        collect_shop_items("Jane", section_items)  # B031: 35, "section_items"
+    else:
+        collect_shop_items("Joe", section_items)  # B031: 34, "section_items"
