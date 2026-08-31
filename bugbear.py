@@ -1404,7 +1404,7 @@ class BugBearVisitor(ast.NodeVisitor):
                 ),
             )
 
-        if isinstance(node, ast.For):
+        if isinstance(node, (ast.For, ast.AsyncFor)):
             num_usages = self._check_b031_group_usage(
                 node.target, group_name, num_usages, repeated
             )
@@ -1412,6 +1412,18 @@ class BugBearVisitor(ast.NodeVisitor):
                 node.iter, group_name, num_usages, repeated
             )
             # Any body reference may run once per nested loop iteration.
+            num_usages = self._check_b031_group_usages(
+                node.body, group_name, num_usages, True
+            )
+            return self._check_b031_group_usages(
+                node.orelse, group_name, num_usages, repeated
+            )
+
+        if isinstance(node, ast.While):
+            num_usages = self._check_b031_group_usage(
+                node.test, group_name, num_usages, repeated
+            )
+            # A while body can also consume the group on every iteration.
             num_usages = self._check_b031_group_usages(
                 node.body, group_name, num_usages, True
             )

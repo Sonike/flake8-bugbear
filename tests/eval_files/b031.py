@@ -107,3 +107,26 @@ for _section, section_items in groupby(items, key=lambda p: p[1]):
         collect_shop_items("Jane", section_items)  # B031: 35, "section_items"
     else:
         collect_shop_items("Joe", section_items)  # B031: 34, "section_items"
+
+
+# Conditional branches in a repeating while body can run on different iterations
+for _section, section_items in groupby(items, key=lambda p: p[1]):
+    while shoppers:
+        if _section == "greens":
+            collect_shop_items("Jane", section_items)  # B031: 39, "section_items"
+        else:
+            collect_shop_items("Joe", section_items)  # B031: 38, "section_items"
+
+
+async def async_shoppers():
+    yield "Jane"
+
+
+# The same applies to async for bodies
+async def collect_async_groups():
+    for _section, section_items in groupby(items, key=lambda p: p[1]):
+        async for shopper in async_shoppers():
+            if shopper == "Jane":
+                collect_shop_items("Jane", section_items)  # B031: 43, "section_items"
+            else:
+                collect_shop_items("Joe", section_items)  # B031: 42, "section_items"
