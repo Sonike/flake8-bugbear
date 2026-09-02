@@ -374,11 +374,6 @@ def children_in_scope(node: ast.AST) -> Iterator[ast.AST]:
             yield from children_in_scope(child)
 
 
-def walk_list(nodes: Sequence[ast.AST]) -> Iterator[ast.AST]:
-    for node in nodes:
-        yield from ast.walk(node)
-
-
 def _typesafe_issubclass(cls: type, class_or_tuple: type | tuple[type, ...]) -> bool:
     try:
         return issubclass(cls, class_or_tuple)
@@ -1367,6 +1362,81 @@ class BugBearVisitor(ast.NodeVisitor):
             ):
                 self.add_error("B026", starred)
 
+    def _check_b031_group_usages(
+        self,
+        nodes: Sequence[ast.AST],
+        group_name: str,
+        num_usages: int = 0,
+        repeated: bool = False,
+    ) -> int:
+        for node in nodes:
+            num_usages = self._check_b031_group_usage(
+                node, group_name, num_usages, repeated
+            )
+        return num_usages
+
+    def _check_b031_group_usage(
+        self,
+        node: ast.AST,
+        group_name: str,
+        num_usages: int,
+        repeated: bool,
+    ) -> int:
+        if isinstance(node, ast.Name):
+            if node.id == group_name and isinstance(node.ctx, ast.Load):
+                num_usages += 1
+                if repeated or num_usages > 1:
+                    self.add_error("B031", node, node.id)
+            return num_usages
+
+        if isinstance(node, ast.If):
+            num_usages = self._check_b031_group_usage(
+                node.test, group_name, num_usages, repeated
+            )
+            # Only one branch can execute, so keep the largest path count
+            # instead of adding usages from mutually exclusive branches.
+            return max(
+                self._check_b031_group_usages(
+                    node.body, group_name, num_usages, repeated
+                ),
+                self._check_b031_group_usages(
+                    node.orelse, group_name, num_usages, repeated
+                ),
+            )
+
+        if isinstance(node, (ast.For, ast.AsyncFor)):
+            num_usages = self._check_b031_group_usage(
+                node.target, group_name, num_usages, repeated
+            )
+            num_usages = self._check_b031_group_usage(
+                node.iter, group_name, num_usages, repeated
+            )
+            # Any body reference may run once per nested loop iteration.
+            num_usages = self._check_b031_group_usages(
+                node.body, group_name, num_usages, True
+            )
+            return self._check_b031_group_usages(
+                node.orelse, group_name, num_usages, repeated
+            )
+
+        if isinstance(node, ast.While):
+            num_usages = self._check_b031_group_usage(
+                node.test, group_name, num_usages, repeated
+            )
+            # A while body can also consume the group on every iteration.
+            num_usages = self._check_b031_group_usages(
+                node.body, group_name, num_usages, True
+            )
+            return self._check_b031_group_usages(
+                node.orelse, group_name, num_usages, repeated
+            )
+
+        for child in ast.iter_child_nodes(node):
+            num_usages = self._check_b031_group_usage(
+                child, group_name, num_usages, repeated
+            )
+        return num_usages
+
     def check_for_b031(self, loop_node: ast.For) -> None:  # noqa: C901
         """Check that `itertools.groupby` isn't iterated over more than once.
 
@@ -1391,30 +1461,7 @@ class BugBearVisitor(ast.NodeVisitor):
                     # Ignore any `groupby()` invocation that isn't unpacked
                     return
 
-                num_usages = 0
-                for node in walk_list(loop_node.body):  # type: ignore[assignment]
-                    # Handled nested loops
-                    if isinstance(node, ast.For):
-                        for nested_node in walk_list(node.body):
-                            assert nested_node != node
-                            if (
-                                isinstance(nested_node, ast.Name)
-                                and nested_node.id == group_name
-                                and isinstance(nested_node.ctx, ast.Load)
-                            ):
-                                self.add_error("B031", nested_node, nested_node.id)
-
-                    # Handle multiple uses. Count only loads: a store-context
-                    # reference, such as an annotation target (`group: T`), is
-                    # not a read of the generator (#465).
-                    if (
-                        isinstance(node, ast.Name)
-                        and node.id == group_name
-                        and isinstance(node.ctx, ast.Load)
-                    ):
-                        num_usages += 1
-                        if num_usages > 1:
-                            self.add_error("B031", node, node.id)
+                self._check_b031_group_usages(loop_node.body, group_name)
 
     def _get_names_from_tuple(self, node: ast.Tuple) -> Iterator[str]:
         for dim in node.elts:
