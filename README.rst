@@ -500,6 +500,8 @@ Change Log
 UNRELEASED
 ~~~~~~~~~~
 
+* B031: allow reusing a group after assigning ``list(group)`` or ``tuple(group)``
+  back to the same name (#395)
 * B019: also flag `async_lru.alru_cache` and check cache decorators on `async def` methods (#488)
 * B023: don't flag a function whose every reference is a direct call inside the loop body:
   such a function cannot outlive the iteration it was defined in (#468, #380)
